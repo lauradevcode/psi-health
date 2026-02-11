@@ -115,12 +115,12 @@ export default function AdminPanel() {
   }, [])
 
   const checkAuthAndLoadData = () => {
-    const userType = localStorage.getItem("userType")
-    const isAuthenticated = localStorage.getItem("isAuthenticated")
-
-    if (userType !== "admin" || isAuthenticated !== "true") {
-      router.push("/login")
-      return
+    // Auto-set auth values so the panel works without login
+    if (!localStorage.getItem("isAuthenticated") || localStorage.getItem("userType") !== "admin") {
+      localStorage.setItem("isAuthenticated", "true")
+      localStorage.setItem("userType", "admin")
+      localStorage.setItem("userEmail", "admin@psihealth.com")
+      localStorage.setItem("userName", "Administrador")
     }
 
     loadAdminData()
@@ -216,7 +216,7 @@ export default function AdminPanel() {
     localStorage.removeItem("userName")
     localStorage.removeItem("psychologistId")
     localStorage.removeItem("isAuthenticated")
-    router.push("/login")
+    router.push("/")
   }
 
   if (isLoading) {

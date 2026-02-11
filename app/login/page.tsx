@@ -11,13 +11,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { User, Mail, Lock, Phone, ShieldCheck } from "lucide-react"
 import Image from "next/image"
 import { useToast } from "@/hooks/use-toast"
-import { createClient } from "@/lib/supabase/client"
+
+interface RegisteredUser {
+  id: string
+  name: string
+  email: string
+  password: string
+  phone: string
+  crp: string
+  type: "psicologo" | "admin"
+  createdAt: string
+}
+
+function getRegisteredUsers(): RegisteredUser[] {
+  try {
+    return JSON.parse(localStorage.getItem("registeredUsers") || "[]")
+  } catch {
+    return []
+  }
+}
+
+function saveRegisteredUsers(users: RegisteredUser[]) {
+  localStorage.setItem("registeredUsers", JSON.stringify(users))
+}
 
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { toast } = useToast()
-  const supabase = createClient()
 
   const [activeTab, setActiveTab] = useState("login")
   const [loginEmail, setLoginEmail] = useState("")
@@ -38,28 +59,36 @@ export default function LoginPage() {
   }, [searchParams])
 
   const handleLogin = async () => {
+    if (!loginEmail || !loginPassword) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha email e senha.",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
-    console.log("[v0] Login attempt:", { email: loginEmail, userType })
 
     try {
-      if (loginEmail.toLowerCase() === "admin@psihealth.com" && loginPassword.toLowerCase() === "admin123") {
-        console.log("[v0] Admin login detected")
+      // Admin fixo
+      if (loginEmail.toLowerCase() === "admin@psihealth.com" && loginPassword === "admin123") {
         localStorage.setItem("userType", "admin")
         localStorage.setItem("userEmail", loginEmail)
         localStorage.setItem("userName", "Administrador")
         localStorage.setItem("isAuthenticated", "true")
 
         toast({
-          title: "Admin login bem-sucedido!",
+          title: "Login admin bem-sucedido!",
           description: "Redirecionando para o painel administrativo...",
         })
 
-        window.location.replace("/painel-admin")
+        router.push("/painel-admin")
         return
       }
 
-      if (loginEmail.toLowerCase() === "psicologo@demo.com" && loginPassword.toLowerCase() === "demo123") {
-        console.log("[v0] Demo psychologist login detected")
+      // Demo psicólogo fixo
+      if (loginEmail.toLowerCase() === "psicologo@demo.com" && loginPassword === "demo123") {
         localStorage.setItem("userType", "psicologo")
         localStorage.setItem("userEmail", loginEmail)
         localStorage.setItem("userName", "Psicólogo Demo")
@@ -71,63 +100,37 @@ export default function LoginPage() {
           description: "Bem-vindo ao painel do psicólogo!",
         })
 
-        window.location.replace("/painel-psicologo")
+        router.push("/painel-psicologo")
         return
       }
 
-      console.log("[v0] Attempting Supabase authentication...")
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: loginEmail,
-        password: loginPassword,
-      })
+      // Buscar nos usuários cadastrados localmente
+      const users = getRegisteredUsers()
+      const user = users.find(
+        (u) => u.email.toLowerCase() === loginEmail.toLowerCase() && u.password === loginPassword,
+      )
 
-      if (error) {
-        throw new Error("Email ou senha incorretos. Verifique suas credenciais e tente novamente.")
+      if (!user) {
+        throw new Error("Email ou senha incorretos. Verifique suas credenciais ou crie uma conta.")
       }
 
-      if (!data.user) {
-        throw new Error("Erro ao autenticar. Tente novamente.")
-      }
-
-      const { data: psychologistData, error: psychologistError } = await supabase
-        .from("psychologists")
-        .select("*")
-        .eq("id", data.user.id)
-        .single()
-
-      if (psychologistError) {
-        console.log("[v0] Psychologist not found in database, creating profile...")
-
-        const { error: insertError } = await supabase.from("psychologists").insert([
-          {
-            id: data.user.id,
-            email: data.user.email,
-            name: data.user.user_metadata?.name || "Psicólogo",
-            phone: data.user.user_metadata?.phone || "",
-            crp: data.user.user_metadata?.crp || "",
-            is_active: true,
-          },
-        ])
-
-        if (insertError) {
-          console.error("[v0] Error creating psychologist profile:", insertError)
-        }
-      }
-
-      localStorage.setItem("userType", "psicologo")
-      localStorage.setItem("userEmail", data.user.email || "")
-      localStorage.setItem("userName", psychologistData?.name || data.user.user_metadata?.name || "Psicólogo")
-      localStorage.setItem("psychologistId", data.user.id)
+      localStorage.setItem("userType", user.type)
+      localStorage.setItem("userEmail", user.email)
+      localStorage.setItem("userName", user.name)
+      localStorage.setItem("psychologistId", user.id)
       localStorage.setItem("isAuthenticated", "true")
 
       toast({
         title: "Login realizado com sucesso!",
-        description: `Bem-vindo, ${psychologistData?.name || data.user.user_metadata?.name || "Psicólogo"}!`,
+        description: `Bem-vindo, ${user.name}!`,
       })
 
-      window.location.replace("/painel-psicologo")
+      if (user.type === "admin") {
+        router.push("/painel-admin")
+      } else {
+        router.push("/painel-psicologo")
+      }
     } catch (error: any) {
-      console.error("[v0] Login error:", error)
       toast({
         title: "Erro ao fazer login",
         description: error.message || "Verifique suas credenciais e tente novamente.",
@@ -158,64 +161,43 @@ export default function LoginPage() {
     }
 
     setIsLoading(true)
-    console.log("[v0] Signup attempt:", { name: signupName, email: signupEmail })
 
     try {
-      const { data, error } = await supabase.auth.signUp({
+      const users = getRegisteredUsers()
+
+      // Verificar se email já existe
+      if (users.some((u) => u.email.toLowerCase() === signupEmail.toLowerCase())) {
+        throw new Error("Este email já está cadastrado. Faça login.")
+      }
+
+      const newUser: RegisteredUser = {
+        id: `psy-${Date.now()}`,
+        name: signupName,
         email: signupEmail,
         password: signupPassword,
-        options: {
-          emailRedirectTo:
-            process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/painel-psicologo`,
-          data: {
-            name: signupName,
-            phone: signupPhone,
-            crp: signupCrp,
-          },
-        },
-      })
-
-      if (error) {
-        if (error.message.includes("already registered")) {
-          throw new Error("Este email já está cadastrado. Faça login.")
-        }
-        throw error
+        phone: signupPhone,
+        crp: signupCrp,
+        type: "psicologo",
+        createdAt: new Date().toISOString(),
       }
 
-      if (!data.user) {
-        throw new Error("Erro ao criar conta. Tente novamente.")
-      }
-
-      const { error: insertError } = await supabase.from("psychologists").insert([
-        {
-          id: data.user.id,
-          email: signupEmail,
-          name: signupName,
-          phone: signupPhone,
-          crp: signupCrp,
-          is_active: true,
-        },
-      ])
-
-      if (insertError) {
-        console.error("[v0] Error creating psychologist profile:", insertError)
-        // Não falhar o cadastro se o perfil já existe
-      }
+      users.push(newUser)
+      saveRegisteredUsers(users)
 
       toast({
         title: "Conta criada com sucesso!",
         description: "Você já pode fazer login com suas credenciais.",
       })
 
-      setSignupName("")
-      setSignupEmail("")
-      setSignupPassword("")
-      setSignupPhone("")
-      setSignupCrp("")
-      setActiveTab("login")
-      setLoginEmail(signupEmail)
+      // Logar automaticamente após cadastro
+      localStorage.setItem("userType", "psicologo")
+      localStorage.setItem("userEmail", newUser.email)
+      localStorage.setItem("userName", newUser.name)
+      localStorage.setItem("psychologistId", newUser.id)
+      localStorage.setItem("isAuthenticated", "true")
+
+      router.push("/painel-psicologo")
     } catch (error: any) {
-      console.error("[v0] Signup error:", error)
       toast({
         title: "Erro ao criar conta",
         description: error.message || "Tente novamente mais tarde.",

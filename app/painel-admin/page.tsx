@@ -22,7 +22,6 @@ import {
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
-import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
 interface Psychologist {
@@ -47,9 +46,56 @@ interface PlatformStats {
   checkInsWeek: number
 }
 
+// Dados simulados para demonstração
+const mockPsychologists: Psychologist[] = [
+  {
+    id: "demo-id",
+    name: "Psicólogo Demo",
+    email: "psicologo@demo.com",
+    crp: "CRP 06/12345",
+    phone: "(11) 99999-0001",
+    created_at: "2025-01-15T10:00:00Z",
+    last_login: new Date().toISOString(),
+    patientsCount: 3,
+    checkInsReceived: 12,
+    is_active: true,
+  },
+  {
+    id: "psy-2",
+    name: "Dra. Mariana Oliveira",
+    email: "mariana@email.com",
+    crp: "CRP 06/67890",
+    phone: "(11) 99999-0002",
+    created_at: "2025-02-20T14:00:00Z",
+    last_login: "2025-12-10T08:00:00Z",
+    patientsCount: 5,
+    checkInsReceived: 28,
+    is_active: true,
+  },
+  {
+    id: "psy-3",
+    name: "Dr. Ricardo Santos",
+    email: "ricardo@email.com",
+    crp: "CRP 01/11223",
+    phone: "(61) 98888-0003",
+    created_at: "2025-03-10T09:00:00Z",
+    last_login: "2025-11-05T16:00:00Z",
+    patientsCount: 2,
+    checkInsReceived: 8,
+    is_active: false,
+  },
+]
+
+function getRegisteredUsers() {
+  try {
+    return JSON.parse(localStorage.getItem("registeredUsers") || "[]")
+  } catch {
+    return []
+  }
+}
+
 export default function AdminPanel() {
   const router = useRouter()
-  const supabase = createClient()
   const { toast } = useToast()
 
   const [psychologists, setPsychologists] = useState<Psychologist[]>([])
@@ -68,109 +114,52 @@ export default function AdminPanel() {
     checkAuthAndLoadData()
   }, [])
 
-  const checkAuthAndLoadData = async () => {
-    try {
-      const userType = localStorage.getItem("userType")
-      const isAuthenticated = localStorage.getItem("isAuthenticated")
+  const checkAuthAndLoadData = () => {
+    const userType = localStorage.getItem("userType")
+    const isAuthenticated = localStorage.getItem("isAuthenticated")
 
-      console.log("[v0] Admin panel auth check:", { userType, isAuthenticated })
-
-      if (userType !== "admin" || isAuthenticated !== "true") {
-        console.log("[v0] Not admin, redirecting to login")
-        router.push("/login")
-        return
-      }
-
-      await loadAdminData()
-    } catch (error) {
-      console.error("[v0] Error checking auth:", error)
+    if (userType !== "admin" || isAuthenticated !== "true") {
       router.push("/login")
-    } finally {
-      setIsLoading(false)
+      return
     }
+
+    loadAdminData()
+    setIsLoading(false)
   }
 
-  const loadAdminData = async () => {
-    try {
-      const { data: psychologistsData, error: psyError } = await supabase
-        .from("psychologists")
-        .select("*")
-        .order("created_at", { ascending: false })
+  const loadAdminData = () => {
+    // Combinar psicólogos mock + cadastrados localmente
+    const registeredUsers = getRegisteredUsers()
+    const registeredPsychologists: Psychologist[] = registeredUsers
+      .filter((u: any) => u.type === "psicologo")
+      .map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        crp: u.crp || "",
+        phone: u.phone || "",
+        created_at: u.createdAt || new Date().toISOString(),
+        last_login: u.lastAccess || undefined,
+        patientsCount: 0,
+        checkInsReceived: 0,
+        is_active: true,
+      }))
 
-      if (psyError) {
-        console.error("[v0] Error loading psychologists:", psyError)
-        // Continue with empty data instead of failing
-      }
+    const allPsychologists = [...mockPsychologists, ...registeredPsychologists]
+    setPsychologists(allPsychologists)
 
-      const { data: patients, error: patientsError } = await supabase.from("patients").select("id, psychologist_id")
+    // Estatísticas simuladas
+    const totalPatients = allPsychologists.reduce((sum, p) => sum + p.patientsCount, 0)
+    const totalCheckIns = allPsychologists.reduce((sum, p) => sum + p.checkInsReceived, 0)
 
-      if (patientsError) {
-        console.error("[v0] Error loading patients:", patientsError)
-        // Continue with empty data instead of failing
-      }
-
-      const { data: checkIns, error: checkInsError } = await supabase
-        .from("check_ins")
-        .select("id, psychologist_id, created_at")
-
-      if (checkInsError) {
-        console.error("[v0] Error loading check-ins:", checkInsError)
-        // Continue with empty data instead of failing
-      }
-
-      // Processar dados dos psicólogos
-      const psychologistsWithCounts: Psychologist[] = (psychologistsData || []).map((psy) => {
-        const psyPatients = patients?.filter((p) => p.psychologist_id === psy.id) || []
-        const psyCheckIns = checkIns?.filter((c) => c.psychologist_id === psy.id) || []
-
-        return {
-          id: psy.id,
-          name: psy.name,
-          email: psy.email,
-          crp: psy.crp,
-          phone: psy.phone,
-          created_at: psy.created_at,
-          last_login: psy.last_login,
-          patientsCount: psyPatients.length,
-          checkInsReceived: psyCheckIns.length,
-          is_active: psy.is_active,
-        }
-      })
-
-      setPsychologists(psychologistsWithCounts)
-
-      // Calcular estatísticas
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
-
-      const weekAgo = new Date()
-      weekAgo.setDate(weekAgo.getDate() - 7)
-
-      const checkInsToday =
-        checkIns?.filter((c) => {
-          const checkInDate = new Date(c.created_at)
-          checkInDate.setHours(0, 0, 0, 0)
-          return checkInDate.getTime() === today.getTime()
-        }).length || 0
-
-      const checkInsWeek = checkIns?.filter((c) => new Date(c.created_at) >= weekAgo).length || 0
-
-      setStats({
-        totalPsychologists: psychologistsWithCounts.length,
-        activePsychologists: psychologistsWithCounts.filter((p) => p.is_active).length,
-        totalPatients: patients?.length || 0,
-        totalCheckIns: checkIns?.length || 0,
-        checkInsToday,
-        checkInsWeek,
-      })
-    } catch (error: any) {
-      console.error("[v0] Error loading admin data:", error)
-      toast({
-        title: "Erro ao carregar dados",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
+    setStats({
+      totalPsychologists: allPsychologists.length,
+      activePsychologists: allPsychologists.filter((p) => p.is_active).length,
+      totalPatients,
+      totalCheckIns,
+      checkInsToday: 4,
+      checkInsWeek: 18,
+    })
   }
 
   const filteredPsychologists = psychologists.filter(
@@ -180,58 +169,31 @@ export default function AdminPanel() {
       psy.crp?.toLowerCase().includes(searchTerm.toLowerCase()),
   )
 
-  const togglePsychologistStatus = async (id: string) => {
-    try {
-      const psy = psychologists.find((p) => p.id === id)
-      if (!psy) return
+  const togglePsychologistStatus = (id: string) => {
+    const psy = psychologists.find((p) => p.id === id)
+    if (!psy) return
 
-      const { error } = await supabase
-        .from("psychologists")
-        .update({ is_active: !psy.is_active, updated_at: new Date().toISOString() })
-        .eq("id", id)
+    setPsychologists((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, is_active: !p.is_active } : p)),
+    )
 
-      if (error) throw error
-
-      toast({
-        title: "Status atualizado",
-        description: `Psicólogo ${psy.is_active ? "desativado" : "ativado"} com sucesso.`,
-      })
-
-      await loadAdminData()
-    } catch (error: any) {
-      console.error("[v0] Error toggling status:", error)
-      toast({
-        title: "Erro ao atualizar status",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Status atualizado",
+      description: `Psicólogo ${psy.is_active ? "desativado" : "ativado"} com sucesso.`,
+    })
   }
 
-  const deletePsychologist = async (id: string) => {
+  const deletePsychologist = (id: string) => {
     if (!confirm("Tem certeza que deseja remover este psicólogo? Esta ação não pode ser desfeita.")) {
       return
     }
 
-    try {
-      const { error } = await supabase.from("psychologists").delete().eq("id", id)
+    setPsychologists((prev) => prev.filter((p) => p.id !== id))
 
-      if (error) throw error
-
-      toast({
-        title: "Psicólogo removido",
-        description: "O psicólogo foi removido com sucesso.",
-      })
-
-      await loadAdminData()
-    } catch (error: any) {
-      console.error("[v0] Error deleting psychologist:", error)
-      toast({
-        title: "Erro ao remover psicólogo",
-        description: error.message,
-        variant: "destructive",
-      })
-    }
+    toast({
+      title: "Psicólogo removido",
+      description: "O psicólogo foi removido com sucesso.",
+    })
   }
 
   const exportData = () => {
@@ -248,8 +210,12 @@ export default function AdminPanel() {
     a.click()
   }
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
+  const handleLogout = () => {
+    localStorage.removeItem("userType")
+    localStorage.removeItem("userEmail")
+    localStorage.removeItem("userName")
+    localStorage.removeItem("psychologistId")
+    localStorage.removeItem("isAuthenticated")
     router.push("/login")
   }
 

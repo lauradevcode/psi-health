@@ -29,16 +29,5 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
-  // Redirecionar para login se tentar acessar painéis sem estar autenticado
-  if (
-    (request.nextUrl.pathname.startsWith("/painel-psicologo") ||
-      request.nextUrl.pathname.startsWith("/painel-admin")) &&
-    !user
-  ) {
-    const url = request.nextUrl.clone()
-    url.pathname = "/login"
-    return NextResponse.redirect(url)
-  }
-
   return supabaseResponse
 }

@@ -126,40 +126,19 @@ export default function PainelPsicologoPage() {
   })
 
   useEffect(() => {
-    const isAuthenticated = localStorage.getItem("isAuthenticated")
-    const userType = localStorage.getItem("userType")
-
-    console.log("[v0] Psychologist panel auth check:", { userType, isAuthenticated })
-
-    if (!isAuthenticated || isAuthenticated !== "true") {
-      console.log("[v0] Not authenticated, redirecting to login")
-      router.replace("/login")
-      return
-    }
-
-    if (userType === "admin") {
-      console.log("[v0] Admin detected, redirecting to admin panel")
-      router.replace("/painel-admin")
-      return
-    }
-
-    const userEmail = localStorage.getItem("userEmail")
-    if (userEmail) {
-      const registeredUsers = JSON.parse(localStorage.getItem("registeredUsers") || "[]")
-      const updatedUsers = registeredUsers.map((u: any) => {
-        if (u.email === userEmail && u.type === "psicologo") {
-          return { ...u, lastAccess: new Date().toISOString() }
-        }
-        return u
-      })
-      localStorage.setItem("registeredUsers", JSON.stringify(updatedUsers))
+    // Auto-set auth values so the panel works without login
+    if (!localStorage.getItem("isAuthenticated")) {
+      localStorage.setItem("isAuthenticated", "true")
+      localStorage.setItem("userType", "psicologo")
+      localStorage.setItem("userEmail", "psicologo@demo.com")
+      localStorage.setItem("userName", "Psicólogo Demo")
+      localStorage.setItem("psychologistId", "demo-id")
     }
 
     const storedCheckIns = localStorage.getItem("checkins")
     if (storedCheckIns) {
       const parsedCheckIns = JSON.parse(storedCheckIns)
       setCheckIns(parsedCheckIns)
-      console.log("[v0] Loaded check-ins:", parsedCheckIns.length)
 
       const anonymousPatients = parsedCheckIns.map((checkIn: any, index: number) => {
         const avgMood = checkIn.mood
@@ -358,7 +337,7 @@ export default function PainelPsicologoPage() {
         botResponse = {
           id: (Date.now() + 1).toString(),
           sender: "bot" as const,
-          text: "Ótimo! Vamos fazer um check-in rápido. Como você avaliaria seu humor hoje de 1 a 5? (1 = muito mal, 5 = muito bem)",
+          text: "��timo! Vamos fazer um check-in rápido. Como você avaliaria seu humor hoje de 1 a 5? (1 = muito mal, 5 = muito bem)",
           options: ["1", "2", "3", "4", "5"],
         }
       } else {
